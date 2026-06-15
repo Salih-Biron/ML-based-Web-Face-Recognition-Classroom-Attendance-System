@@ -1,0 +1,7 @@
+Flask==2.3.2
+deepface==0.0.79
+APScheduler==3.10.1
+Pillow==10.0.0
+opencv-python==4.8.0.74
+tf-keras==2.16.0
+werkzeug==2.3.6

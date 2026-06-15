@@ -1,0 +1,13 @@
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+database.db
+face_db/
+face_embeddings_cache/
+.env
+venv/
+*.log
+.DS_Store
+docs/
