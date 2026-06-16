@@ -1,0 +1,472 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>学生签到 - 人脸识别考勤系统</title>
+    <link rel="stylesheet" href="/static/css/common.css">
+    <style>
+        .checkin-container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        .header {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+
+        .header h1 {
+            margin-bottom: 10px;
+            color: #2d3748;
+        }
+
+        .activity-info {
+            color: #718096;
+            font-size: 14px;
+        }
+
+        .main-content {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+
+        @media (max-width: 768px) {
+            .main-content {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .camera-section {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+
+        .camera-section h2 {
+            margin-bottom: 15px;
+            color: #2d3748;
+            font-size: 18px;
+        }
+
+        .video-container {
+            position: relative;
+            width: 100%;
+            background: #000;
+            border-radius: 8px;
+            overflow: hidden;
+            margin-bottom: 15px;
+        }
+
+        #video {
+            width: 100%;
+            display: block;
+        }
+
+        .video-overlay {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            right: 10px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .status-badge {
+            background: rgba(0,0,0,0.7);
+            color: white;
+            padding: 5px 10px;
+            border-radius: 5px;
+            font-size: 12px;
+        }
+
+        .status-badge.active {
+            background: rgba(72, 187, 120, 0.9);
+        }
+
+        .camera-controls {
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+        }
+
+        .result-section {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+
+        .result-section h2 {
+            margin-bottom: 15px;
+            color: #2d3748;
+            font-size: 18px;
+        }
+
+        .recognition-result {
+            background: #f7fafc;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            border-left: 4px solid #667eea;
+        }
+
+        .recognition-result.success {
+            border-left-color: #48bb78;
+        }
+
+        .recognition-result.error {
+            border-left-color: #f56565;
+        }
+
+        .result-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+
+        .result-item:last-child {
+            margin-bottom: 0;
+        }
+
+        .student-name {
+            font-weight: 600;
+            color: #2d3748;
+        }
+
+        .status-text {
+            font-size: 14px;
+            padding: 3px 8px;
+            border-radius: 4px;
+        }
+
+        .status-text.signed-in {
+            background: #c6f6d5;
+            color: #22543d;
+        }
+
+        .status-text.signed-out {
+            background: #bee3f8;
+            color: #2c5282;
+        }
+
+        .status-text.already-completed {
+            background: #e2e8f0;
+            color: #4a5568;
+        }
+
+        .attendance-list {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+
+        .attendance-list h2 {
+            margin-bottom: 15px;
+            color: #2d3748;
+            font-size: 18px;
+        }
+
+        .attendance-table {
+            max-height: 400px;
+            overflow-y: auto;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 40px;
+            color: #a0aec0;
+        }
+
+        .loading-state {
+            text-align: center;
+            padding: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div id="app" class="checkin-container">
+        <div class="header">
+            <h1>📸 {{ activityInfo.name || '加载中...' }}</h1>
+            <div class="activity-info" v-if="activityInfo.name">
+                <span>开始时间: {{ activityInfo.start_time }}</span> |
+                <span>结束时间: {{ activityInfo.end_time }}</span> |
+                <span :class="statusClass">{{ statusText }}</span>
+            </div>
+        </div>
+
+        <div class="main-content">
+            <div class="camera-section">
+                <h2>📷 摄像头</h2>
+                <div class="video-container">
+                    <video id="video" autoplay playsinline></video>
+                    <div class="video-overlay">
+                        <span class="status-badge" :class="{ active: isCapturing }">
+                            {{ isCapturing ? '正在识别...' : '等待中' }}
+                        </span>
+                        <span class="status-badge">
+                            间隔: {{ captureInterval }}秒
+                        </span>
+                    </div>
+                </div>
+                <canvas id="canvas" style="display: none;"></canvas>
+                <div class="camera-controls">
+                    <button v-if="!cameraStarted" @click="startCamera" class="btn-primary">
+                        启动摄像头
+                    </button>
+                    <button v-if="cameraStarted && !isCapturing" @click="startCapture" class="btn-success">
+                        开始签到
+                    </button>
+                    <button v-if="isCapturing" @click="stopCapture" class="btn-danger">
+                        停止签到
+                    </button>
+                </div>
+            </div>
+
+            <div class="result-section">
+                <h2>✅ 识别结果</h2>
+                <div v-if="recognitionResults.length === 0" class="empty-state">
+                    暂无识别结果
+                </div>
+                <div v-for="(result, index) in recognitionResults" :key="index"
+                     class="recognition-result" :class="{ success: result.success }">
+                    <div class="result-item" v-if="result.success">
+                        <div v-for="person in result.recognized" :key="person.name">
+                            <span class="student-name">{{ person.name }}</span>
+                            <span class="status-text" :class="getStatusClass(person.status)">
+                                {{ getStatusText(person.status, person.duration) }}
+                            </span>
+                        </div>
+                    </div>
+                    <div v-else style="color: #f56565;">
+                        {{ result.message }}
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="attendance-list">
+            <h2>📋 实时考勤列表</h2>
+            <div v-if="loading" class="loading-state">
+                <div class="loading"></div>
+                <p>加载中...</p>
+            </div>
+            <div v-else-if="attendanceRecords.length === 0" class="empty-state">
+                暂无考勤记录
+            </div>
+            <div v-else class="attendance-table">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>姓名</th>
+                            <th>班级</th>
+                            <th>签到状态</th>
+                            <th>签到时间</th>
+                            <th>签退时间</th>
+                            <th>时长(分钟)</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr v-for="record in attendanceRecords" :key="record.student_name">
+                            <td>{{ record.student_name }}</td>
+                            <td>{{ record.class_name }}</td>
+                            <td>
+                                <span class="status-text" :class="getStatusClass(record.status)">
+                                    {{ getStatusText(record.status) }}
+                                </span>
+                            </td>
+                            <td>{{ record.signin_time || '-' }}</td>
+                            <td>{{ record.signout_time || '-' }}</td>
+                            <td>{{ record.duration || 0 }}</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/vue@3/dist/vue.global.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+    <script>
+        const { createApp } = Vue;
+
+        createApp({
+            data() {
+                return {
+                    activityId: {{ activity_id }},
+                    activityInfo: {},
+                    captureInterval: 3,
+                    cameraStarted: false,
+                    isCapturing: false,
+                    recognitionResults: [],
+                    attendanceRecords: [],
+                    loading: false,
+                    captureTimer: null,
+                    refreshTimer: null,
+                    stream: null
+                };
+            },
+            computed: {
+                statusText() {
+                    const statusMap = {
+                        'pending': '未开始',
+                        'ongoing': '进行中',
+                        'ended': '已结束'
+                    };
+                    return statusMap[this.activityInfo.status] || '未知';
+                },
+                statusClass() {
+                    return this.activityInfo.status === 'ongoing' ? 'green' : 'red';
+                }
+            },
+            mounted() {
+                this.loadActivityInfo();
+                this.loadAttendanceList();
+                // 每5秒刷新考勤列表
+                this.refreshTimer = setInterval(() => {
+                    this.loadAttendanceList();
+                }, 5000);
+            },
+            beforeUnmount() {
+                this.stopCapture();
+                if (this.refreshTimer) {
+                    clearInterval(this.refreshTimer);
+                }
+                if (this.stream) {
+                    this.stream.getTracks().forEach(track => track.stop());
+                }
+            },
+            methods: {
+                async loadActivityInfo() {
+                    try {
+                        const response = await axios.get(`/api/activity/${this.activityId}/info`);
+                        if (response.data.success) {
+                            this.activityInfo = response.data.activity;
+                            this.captureInterval = response.data.capture_interval;
+                        }
+                    } catch (error) {
+                        console.error('加载活动信息失败:', error);
+                    }
+                },
+                async loadAttendanceList() {
+                    try {
+                        this.loading = true;
+                        const response = await axios.get(`/api/activity/${this.activityId}/attendance`);
+                        this.attendanceRecords = response.data;
+                    } catch (error) {
+                        console.error('加载考勤列表失败:', error);
+                    } finally {
+                        this.loading = false;
+                    }
+                },
+                async startCamera() {
+                    try {
+                        const video = document.getElementById('video');
+                        this.stream = await navigator.mediaDevices.getUserMedia({
+                            video: {
+                                width: { ideal: 640 },
+                                height: { ideal: 480 }
+                            }
+                        });
+                        video.srcObject = this.stream;
+                        this.cameraStarted = true;
+                    } catch (error) {
+                        alert('无法访问摄像头: ' + error.message);
+                    }
+                },
+                startCapture() {
+                    if (this.activityInfo.status !== 'ongoing') {
+                        alert('活动未进行中，无法签到');
+                        return;
+                    }
+
+                    this.isCapturing = true;
+                    this.captureAndRecognize();
+                    this.captureTimer = setInterval(() => {
+                        this.captureAndRecognize();
+                    }, this.captureInterval * 1000);
+                },
+                stopCapture() {
+                    this.isCapturing = false;
+                    if (this.captureTimer) {
+                        clearInterval(this.captureTimer);
+                        this.captureTimer = null;
+                    }
+                },
+                async captureAndRecognize() {
+                    const video = document.getElementById('video');
+                    const canvas = document.getElementById('canvas');
+                    const context = canvas.getContext('2d');
+
+                    canvas.width = video.videoWidth;
+                    canvas.height = video.videoHeight;
+                    context.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+                    const imageData = canvas.toDataURL('image/jpeg');
+
+                    try {
+                        const response = await axios.post('/api/recognize', {
+                            activity_id: this.activityId,
+                            image: imageData
+                        });
+
+                        if (response.data.success) {
+                            this.recognitionResults.unshift({
+                                success: true,
+                                recognized: response.data.recognized
+                            });
+                        } else {
+                            this.recognitionResults.unshift({
+                                success: false,
+                                message: response.data.message
+                            });
+                        }
+
+                        // 保留最近10条结果
+                        if (this.recognitionResults.length > 10) {
+                            this.recognitionResults.pop();
+                        }
+
+                        // 刷新考勤列表
+                        this.loadAttendanceList();
+                    } catch (error) {
+                        console.error('识别失败:', error);
+                        this.recognitionResults.unshift({
+                            success: false,
+                            message: '识别失败: ' + (error.response?.data?.message || error.message)
+                        });
+                    }
+                },
+                getStatusClass(status) {
+                    const classMap = {
+                        'signed_in': 'signed-in',
+                        'signed_out': 'signed-out',
+                        'already_completed': 'already-completed',
+                        'not_signed': ''
+                    };
+                    return classMap[status] || '';
+                },
+                getStatusText(status, duration) {
+                    const textMap = {
+                        'signed_in': '已签到',
+                        'signed_out': duration ? `已签退 (${duration}分钟)` : '已签退',
+                        'already_completed': '已完成',
+                        'not_signed': '未签到'
+                    };
+                    return textMap[status] || status;
+                }
+            }
+        }).mount('#app');
+    </script>
+</body>
+</html>
