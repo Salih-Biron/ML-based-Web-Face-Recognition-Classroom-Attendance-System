@@ -92,12 +92,24 @@ class FaceRecognizer:
         print(f"人脸库构建完成，共 {len(face_db)} 人")
         return face_db
 
-    def recognize_faces(self, image_base64, face_db, threshold=None):
+    def recognize_faces(self, image_base64, class_names, threshold=None):
         """
         识别图片中的所有人脸
+        Args:
+            image_base64: base64编码的图片
+            class_names: 班级名称列表
+            threshold: 相似度阈值
+        Returns:
+            识别结果列表
         """
         if threshold is None:
             threshold = config.SIMILARITY_THRESHOLD
+
+        # 加载人脸库
+        face_db = self.load_face_database(class_names)
+
+        if not face_db:
+            return []
 
         # 解码base64图片
         if ',' in image_base64:
@@ -111,91 +123,51 @@ class FaceRecognizer:
         image.save(temp_path)
 
         results = []
-        detected_count = 0
-        recognized_count = 0
 
         try:
-            # 检测所有人脸
-            face_objs = DeepFace.extract_faces(
+            # 提取所有人脸特征（支持多人脸）
+            embeddings_list = DeepFace.represent(
                 img_path=temp_path,
+                model_name=self.model_name,
                 detector_backend=self.detector_backend,
                 enforce_detection=False
             )
 
-            detected_count = len(face_objs)
+            # 对每个检测到的人脸进行识别
+            for embedding_obj in embeddings_list:
+                face_embedding = embedding_obj['embedding']
 
-            for face_obj in face_objs:
-                # 提取当前人脸的特征
-                try:
-                    embeddings = DeepFace.represent(
-                        img_path=temp_path,
-                        model_name=self.model_name,
-                        detector_backend=self.detector_backend,
-                        enforce_detection=False
-                    )
+                # 与人脸库中所有人比较
+                best_match = None
+                best_similarity = -1
 
-                    if not embeddings:
-                        continue
+                for student_name, data in face_db.items():
+                    db_embedding = data['embedding']
 
-                    face_embedding = embeddings[0]['embedding']
+                    # 计算余弦相似度
+                    similarity = self._cosine_similarity(face_embedding, db_embedding)
 
-                    # 与人脸库中所有人比较
-                    best_match = None
-                    best_similarity = -1
+                    if similarity > best_similarity:
+                        best_similarity = similarity
+                        best_match = {
+                            'name': student_name,
+                            'student_id': data['student_id'],
+                            'confidence': round(best_similarity * 100, 2)
+                        }
 
-                    for student_name, data in face_db.items():
-                        db_embedding = data['embedding']
-
-                        # 计算余弦相似度
-                        similarity = self._cosine_similarity(face_embedding, db_embedding)
-
-                        if similarity > best_similarity:
-                            best_similarity = similarity
-                            best_match = {
-                                'student_name': student_name,
-                                'student_id': data['student_id'],
-                                'similarity': similarity
-                            }
-
-                    # 判断是否识别成功
-                    if best_match and best_similarity >= (1 - threshold):
-                        results.append({
-                            'student_name': best_match['student_name'],
-                            'student_id': best_match['student_id'],
-                            'similarity': best_similarity,
-                            'success': True
-                        })
-                        recognized_count += 1
-                    else:
-                        results.append({
-                            'student_name': 'Unknown',
-                            'student_id': None,
-                            'similarity': best_similarity if best_match else 0,
-                            'success': False
-                        })
-                except Exception as e:
-                    print(f"单个人脸识别错误: {e}")
-                    results.append({
-                        'student_name': 'Unknown',
-                        'student_id': None,
-                        'similarity': 0,
-                        'success': False
-                    })
+                # 判断是否识别成功（相似度阈值为1-threshold，因为距离越小越相似）
+                if best_match and best_similarity >= (1 - threshold):
+                    results.append(best_match)
 
         except Exception as e:
-            print(f"人脸检测错误: {e}")
+            print(f"人脸识别错误: {e}")
 
         finally:
             # 删除临时文件
             if os.path.exists(temp_path):
                 os.remove(temp_path)
 
-        return {
-            'detected': detected_count,
-            'recognized': recognized_count,
-            'failed': detected_count - recognized_count,
-            'results': results
-        }
+        return results
 
     def _cosine_similarity(self, vec1, vec2):
         """计算余弦相似度"""

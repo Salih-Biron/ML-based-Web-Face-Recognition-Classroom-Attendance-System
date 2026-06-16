@@ -455,112 +455,124 @@ def recognize_face():
     conn = get_connection()
     cursor = conn.cursor()
 
-    # 获取活动信息
-    cursor.execute('SELECT * FROM activities WHERE id = ?', (activity_id,))
-    activity = cursor.fetchone()
-
-    if not activity:
-        conn.close()
-        return jsonify({'success': False, 'message': '活动不存在'}), 404
-
-    # 检查活动状态
-    if activity['status'] != 'ongoing':
-        conn.close()
-        return jsonify({'success': False, 'message': '活动未进行中'}), 400
-
-    # 获取活动班级列表
-    import json
-    class_ids = json.loads(activity['classes'])
-
-    # 获取班级名称列表
-    class_names = []
-    for class_id in class_ids:
-        cursor.execute('SELECT name FROM classes WHERE id = ?', (class_id,))
-        result = cursor.fetchone()
-        if result:
-            class_names.append(result['name'])
-
-    # 人脸识别
     try:
+        # 获取活动信息
+        cursor.execute('SELECT * FROM activities WHERE id = ?', (activity_id,))
+        activity = cursor.fetchone()
+
+        if not activity:
+            return jsonify({'success': False, 'message': '活动不存在'}), 404
+
+        # 检查活动状态
+        if activity['status'] != 'ongoing':
+            return jsonify({'success': False, 'message': '活动未进行中'}), 400
+
+        # 获取活动班级列表
+        import json
+        class_ids = json.loads(activity['classes'])
+
+        # 获取班级名称列表
+        class_names = []
+        for class_id in class_ids:
+            cursor.execute('SELECT name FROM classes WHERE id = ?', (class_id,))
+            result = cursor.fetchone()
+            if result:
+                class_names.append(result['name'])
+
+        if not class_names:
+            return jsonify({'success': False, 'message': '活动未关联任何班级'}), 400
+
+        # 人脸识别
         results = face_recognizer.recognize_faces(image_data, class_names)
 
         if not results:
-            conn.close()
-            return jsonify({'success': False, 'message': '未识别到人脸'})
+            return jsonify({'success': False, 'message': '未识别到人脸或未匹配到学生'})
 
         # 更新签到记录
         recognized_students = []
+        from datetime import datetime
+        now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+
         for result in results:
             student_name = result['name']
 
-            # 查找学生ID
+            # 查找学生ID（通过name查找可能不够准确，应该直接用result中的student_id）
+            # 但为了兼容性保留name查询
             cursor.execute('SELECT id FROM students WHERE name = ?', (student_name,))
             student = cursor.fetchone()
 
-            if student:
-                student_id = student['id']
+            if not student:
+                continue
 
-                # 检查签到记录
+            student_id = student['id']
+
+            # 检查签到记录
+            cursor.execute('''
+                SELECT * FROM attendance_records
+                WHERE activity_id = ? AND student_id = ?
+            ''', (activity_id, student_id))
+            record = cursor.fetchone()
+
+            if not record:
+                # 如果没有记录，说明该学生不在此活动的班级中
+                continue
+
+            # 签到逻辑
+            if record['status'] == 'not_signed':
                 cursor.execute('''
-                    SELECT * FROM attendance_records
-                    WHERE activity_id = ? AND student_id = ?
-                ''', (activity_id, student_id))
-                record = cursor.fetchone()
+                    UPDATE attendance_records
+                    SET status='signed_in', signin_time=?
+                    WHERE activity_id=? AND student_id=?
+                ''', (now, activity_id, student_id))
+                recognized_students.append({
+                    'name': student_name,
+                    'status': 'signed_in',
+                    'confidence': result['confidence']
+                })
+            elif record['status'] == 'signed_in':
+                # 计算时长（分钟）
+                signin_dt = datetime.strptime(record['signin_time'], '%Y-%m-%d %H:%M:%S')
+                signout_dt = datetime.strptime(now, '%Y-%m-%d %H:%M:%S')
+                duration = int((signout_dt - signin_dt).total_seconds() / 60)
 
-                if record:
-                    from datetime import datetime
-                    now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                # 防止时长为负数或异常值
+                if duration < 0:
+                    duration = 0
 
-                    # 签到逻辑
-                    if record['status'] == 'not_signed':
-                        cursor.execute('''
-                            UPDATE attendance_records
-                            SET status='signed_in', signin_time=?
-                            WHERE activity_id=? AND student_id=?
-                        ''', (now, activity_id, student_id))
-                        recognized_students.append({
-                            'name': student_name,
-                            'status': 'signed_in',
-                            'confidence': result['confidence']
-                        })
-                    elif record['status'] == 'signed_in':
-                        # 计算时长（分钟）
-                        from datetime import datetime
-                        signin_dt = datetime.strptime(record['signin_time'], '%Y-%m-%d %H:%M:%S')
-                        signout_dt = datetime.strptime(now, '%Y-%m-%d %H:%M:%S')
-                        duration = int((signout_dt - signin_dt).total_seconds() / 60)
+                cursor.execute('''
+                    UPDATE attendance_records
+                    SET status='signed_out', signout_time=?, duration=?
+                    WHERE activity_id=? AND student_id=?
+                ''', (now, duration, activity_id, student_id))
 
-                        cursor.execute('''
-                            UPDATE attendance_records
-                            SET status='signed_out', signout_time=?, duration=?
-                            WHERE activity_id=? AND student_id=?
-                        ''', (now, duration, activity_id, student_id))
+                # 更新时长统计
+                cursor.execute('''
+                    UPDATE duration_stats
+                    SET daily_duration = daily_duration + ?,
+                        weekly_duration = weekly_duration + ?,
+                        monthly_duration = monthly_duration + ?,
+                        semester_duration = semester_duration + ?
+                    WHERE student_id = ?
+                ''', (duration, duration, duration, duration, student_id))
 
-                        # 更新时长统计
-                        cursor.execute('''
-                            UPDATE duration_stats
-                            SET daily_duration = daily_duration + ?,
-                                weekly_duration = weekly_duration + ?,
-                                monthly_duration = monthly_duration + ?,
-                                semester_duration = semester_duration + ?
-                            WHERE student_id = ?
-                        ''', (duration, duration, duration, duration, student_id))
-
-                        recognized_students.append({
-                            'name': student_name,
-                            'status': 'signed_out',
-                            'confidence': result['confidence'],
-                            'duration': duration
-                        })
-                    else:
-                        recognized_students.append({
-                            'name': student_name,
-                            'status': 'already_completed',
-                            'confidence': result['confidence']
-                        })
+                recognized_students.append({
+                    'name': student_name,
+                    'status': 'signed_out',
+                    'confidence': result['confidence'],
+                    'duration': duration
+                })
+            else:
+                # 已完成签到签退
+                recognized_students.append({
+                    'name': student_name,
+                    'status': 'already_completed',
+                    'confidence': result['confidence']
+                })
 
         conn.commit()
-        conn.close()
+
+        if not recognized_students:
+            return jsonify({'success': False, 'message': '识别到人脸但未匹配到活动中的学生'})
 
         return jsonify({
             'success': True,
@@ -568,8 +580,11 @@ def recognize_face():
         })
 
     except Exception as e:
-        conn.close()
+        conn.rollback()
+        print(f"识别错误: {e}")
         return jsonify({'success': False, 'message': f'识别失败: {str(e)}'}), 500
+    finally:
+        conn.close()
 
 @app.route('/api/activity/<int:activity_id>/attendance', methods=['GET'])
 def get_attendance_list(activity_id):
@@ -584,7 +599,13 @@ def get_attendance_list(activity_id):
         JOIN students s ON ar.student_id = s.id
         JOIN classes c ON s.class_id = c.id
         WHERE ar.activity_id = ?
-        ORDER BY ar.signin_time DESC
+        ORDER BY
+            CASE ar.status
+                WHEN 'signed_out' THEN 1
+                WHEN 'signed_in' THEN 2
+                WHEN 'not_signed' THEN 3
+            END,
+            ar.signin_time DESC
     ''', (activity_id,))
 
     records = [dict(row) for row in cursor.fetchall()]

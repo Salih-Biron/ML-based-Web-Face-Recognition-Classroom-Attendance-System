@@ -127,6 +127,12 @@
             border-left-color: #f56565;
         }
 
+        .result-timestamp {
+            font-size: 12px;
+            color: #a0aec0;
+            margin-bottom: 8px;
+        }
+
         .result-item {
             display: flex;
             justify-content: space-between;
@@ -240,12 +246,15 @@
                 </div>
                 <div v-for="(result, index) in recognitionResults" :key="index"
                      class="recognition-result" :class="{ success: result.success }">
+                    <div class="result-timestamp">{{ result.timestamp }}</div>
                     <div class="result-item" v-if="result.success">
-                        <div v-for="person in result.recognized" :key="person.name">
-                            <span class="student-name">{{ person.name }}</span>
-                            <span class="status-text" :class="getStatusClass(person.status)">
-                                {{ getStatusText(person.status, person.duration) }}
-                            </span>
+                        <div v-for="person in result.recognized" :key="person.name" style="width: 100%; margin-bottom: 8px;">
+                            <div style="display: flex; justify-content: space-between; align-items: center;">
+                                <span class="student-name">{{ person.name }}</span>
+                                <span class="status-text" :class="getStatusClass(person.status)">
+                                    {{ getStatusText(person.status, person.duration) }}
+                                </span>
+                            </div>
                         </div>
                     </div>
                     <div v-else style="color: #f56565;">
@@ -353,9 +362,12 @@
                         if (response.data.success) {
                             this.activityInfo = response.data.activity;
                             this.captureInterval = response.data.capture_interval;
+                        } else {
+                            alert('加载活动信息失败: ' + response.data.message);
                         }
                     } catch (error) {
                         console.error('加载活动信息失败:', error);
+                        alert('加载活动信息失败，请刷新页面重试');
                     }
                 },
                 async loadAttendanceList() {
@@ -408,11 +420,17 @@
                     const canvas = document.getElementById('canvas');
                     const context = canvas.getContext('2d');
 
+                    // 检查视频是否准备好
+                    if (video.readyState !== video.HAVE_ENOUGH_DATA) {
+                        console.log('视频未就绪，跳过本次捕获');
+                        return;
+                    }
+
                     canvas.width = video.videoWidth;
                     canvas.height = video.videoHeight;
                     context.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-                    const imageData = canvas.toDataURL('image/jpeg');
+                    const imageData = canvas.toDataURL('image/jpeg', 0.8);
 
                     try {
                         const response = await axios.post('/api/recognize', {
@@ -423,13 +441,18 @@
                         if (response.data.success) {
                             this.recognitionResults.unshift({
                                 success: true,
-                                recognized: response.data.recognized
+                                recognized: response.data.recognized,
+                                timestamp: new Date().toLocaleTimeString()
                             });
                         } else {
-                            this.recognitionResults.unshift({
-                                success: false,
-                                message: response.data.message
-                            });
+                            // 只在非"未识别到人脸"时显示错误
+                            if (response.data.message !== '未识别到人脸或未匹配到学生') {
+                                this.recognitionResults.unshift({
+                                    success: false,
+                                    message: response.data.message,
+                                    timestamp: new Date().toLocaleTimeString()
+                                });
+                            }
                         }
 
                         // 保留最近10条结果
@@ -443,7 +466,8 @@
                         console.error('识别失败:', error);
                         this.recognitionResults.unshift({
                             success: false,
-                            message: '识别失败: ' + (error.response?.data?.message || error.message)
+                            message: '识别失败: ' + (error.response?.data?.message || error.message),
+                            timestamp: new Date().toLocaleTimeString()
                         });
                     }
                 },
