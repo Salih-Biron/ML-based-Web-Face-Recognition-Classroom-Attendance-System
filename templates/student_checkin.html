@@ -209,6 +209,15 @@
                 <span>结束时间: {{ activityInfo.end_time }}</span> |
                 <span :class="statusClass">{{ statusText }}</span>
             </div>
+            <div v-if="cameraError" style="margin-top: 10px; padding: 10px; background: #fed7d7; color: #742a2a; border-radius: 5px; font-size: 14px;">
+                ⚠️ 摄像头访问失败：{{ cameraError }}<br>
+                <strong>解决方案：</strong>
+                <ul style="margin: 5px 0; padding-left: 20px;">
+                    <li>确保使用 <strong>localhost</strong> 或 <strong>HTTPS</strong> 访问</li>
+                    <li>检查浏览器是否允许摄像头权限</li>
+                    <li>推荐使用 Chrome/Edge 浏览器</li>
+                </ul>
+            </div>
         </div>
 
         <div class="main-content">
@@ -312,7 +321,7 @@
         createApp({
             data() {
                 return {
-                    activityId: {{ activity_id }},
+                    activityId: [[ activity_id ]],
                     activityInfo: {},
                     captureInterval: 3,
                     cameraStarted: false,
@@ -322,7 +331,8 @@
                     loading: false,
                     captureTimer: null,
                     refreshTimer: null,
-                    stream: null
+                    stream: null,
+                    cameraError: ''
                 };
             },
             computed: {
@@ -383,6 +393,7 @@
                 },
                 async startCamera() {
                     try {
+                        this.cameraError = '';
                         const video = document.getElementById('video');
                         this.stream = await navigator.mediaDevices.getUserMedia({
                             video: {
@@ -393,7 +404,17 @@
                         video.srcObject = this.stream;
                         this.cameraStarted = true;
                     } catch (error) {
-                        alert('无法访问摄像头: ' + error.message);
+                        console.error('摄像头访问失败:', error);
+                        this.cameraError = error.message;
+
+                        // 根据错误类型提供具体提示
+                        if (error.name === 'NotAllowedError') {
+                            this.cameraError = '用户拒绝了摄像头权限';
+                        } else if (error.name === 'NotFoundError') {
+                            this.cameraError = '未检测到摄像头设备';
+                        } else if (error.name === 'NotSupportedError') {
+                            this.cameraError = '浏览器不支持摄像头访问（需要HTTPS或localhost）';
+                        }
                     }
                 },
                 startCapture() {

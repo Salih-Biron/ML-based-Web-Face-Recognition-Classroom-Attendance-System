@@ -12,6 +12,10 @@ app = Flask(__name__)
 app.config['SECRET_KEY'] = config.SECRET_KEY
 app.config['MAX_CONTENT_LENGTH'] = config.MAX_CONTENT_LENGTH
 
+# 修改Jinja2分隔符，避免与Vue冲突
+app.jinja_env.variable_start_string = '[['
+app.jinja_env.variable_end_string = ']]'
+
 # 初始化人脸识别器
 face_recognizer = FaceRecognizer()
 
@@ -268,6 +272,73 @@ def delete_student(student_id):
     face_recognizer.invalidate_cache(class_name)
 
     return jsonify({'success': True})
+
+@app.route('/api/students/batch-import/<int:class_id>', methods=['POST'])
+def batch_import_students(class_id):
+    """批量导入学生（从face_db文件夹扫描）"""
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    # 获取班级信息
+    cursor.execute('SELECT name FROM classes WHERE id = ?', (class_id,))
+    result = cursor.fetchone()
+    if not result:
+        conn.close()
+        return jsonify({'success': False, 'message': '班级不存在'}), 404
+
+    class_name = result['name']
+    class_dir = os.path.join(config.FACE_DB_PATH, class_name)
+
+    if not os.path.exists(class_dir):
+        conn.close()
+        return jsonify({'success': False, 'message': f'班级文件夹不存在: {class_dir}'}), 404
+
+    # 扫描文件夹中的图片
+    imported_count = 0
+    skipped_count = 0
+    error_list = []
+
+    for filename in os.listdir(class_dir):
+        if not allowed_file(filename):
+            continue
+
+        # 从文件名提取学生姓名（去除扩展名）
+        student_name = os.path.splitext(filename)[0]
+        image_path = os.path.join(class_dir, filename)
+
+        # 检查学生是否已存在
+        cursor.execute('SELECT id FROM students WHERE name = ? AND class_id = ?', (student_name, class_id))
+        existing = cursor.fetchone()
+
+        if existing:
+            skipped_count += 1
+            continue
+
+        try:
+            # 添加到数据库
+            cursor.execute('INSERT INTO students (name, class_id, image_path) VALUES (?, ?, ?)',
+                          (student_name, class_id, image_path))
+            student_id = cursor.lastrowid
+
+            # 初始化时长统计
+            cursor.execute('INSERT INTO duration_stats (student_id) VALUES (?)', (student_id,))
+
+            imported_count += 1
+        except Exception as e:
+            error_list.append(f'{student_name}: {str(e)}')
+
+    conn.commit()
+    conn.close()
+
+    # 删除班级缓存
+    face_recognizer.invalidate_cache(class_name)
+
+    return jsonify({
+        'success': True,
+        'imported': imported_count,
+        'skipped': skipped_count,
+        'errors': error_list
+    })
 
 # ==================== 活动管理API ====================
 

@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git init *)",
+      "Bash(git remote *)",
+      "Bash(git add *)",
+      "Bash(git commit -m 'docs: 添加项目README文档 *)",
+      "Bash(git branch *)",
+      "Bash(git push *)",
+      "Bash(git rm *)",
+      "Bash(git commit -m 'chore: 移除内部文档文件 *)",
+      "Bash(pip install *)",
+      "Bash(python -m pip install -r requirements.txt)",
+      "Bash(git commit *)"
+    ]
+  }
+}

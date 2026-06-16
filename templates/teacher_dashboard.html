@@ -1,0 +1,684 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>教师管理 - 人脸识别考勤系统</title>
+    <link rel="stylesheet" href="/static/css/common.css">
+    <style>
+        .dashboard-header {
+            background: white;
+            padding: 15px 30px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .dashboard-header h1 {
+            font-size: 20px;
+            color: #2d3748;
+        }
+
+        .user-info {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .nav-tabs {
+            background: white;
+            padding: 15px 30px;
+            display: flex;
+            gap: 10px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+            overflow-x: auto;
+        }
+
+        .tab-button {
+            padding: 10px 20px;
+            background: transparent;
+            color: #4a5568;
+            border: none;
+            border-bottom: 3px solid transparent;
+            cursor: pointer;
+            transition: all 0.3s;
+            white-space: nowrap;
+        }
+
+        .tab-button:hover {
+            background: #f7fafc;
+        }
+
+        .tab-button.active {
+            color: #667eea;
+            border-bottom-color: #667eea;
+        }
+
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        .toolbar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .form-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+
+        .qr-code {
+            text-align: center;
+            padding: 20px;
+        }
+
+        .qr-code img {
+            max-width: 200px;
+            border: 2px solid #e2e8f0;
+            border-radius: 8px;
+        }
+    </style>
+</head>
+<body>
+    <div id="app">
+        <!-- 头部 -->
+        <div class="dashboard-header">
+            <h1>📚 人脸识别考勤系统 - 教师管理端</h1>
+            <div class="user-info">
+                <span>欢迎，{{ username }}</span>
+                <button @click="logout" class="btn-secondary">退出登录</button>
+            </div>
+        </div>
+
+        <!-- Tab导航 -->
+        <div class="nav-tabs">
+            <button class="tab-button" :class="{active: currentTab==='activities'}" @click="currentTab='activities'">活动管理</button>
+            <button class="tab-button" :class="{active: currentTab==='classes'}" @click="currentTab='classes'">班级管理</button>
+            <button class="tab-button" :class="{active: currentTab==='students'}" @click="currentTab='students'">人员管理</button>
+            <button class="tab-button" :class="{active: currentTab==='stats'}" @click="currentTab='stats'">时长统计</button>
+            <button class="tab-button" :class="{active: currentTab==='config'}" @click="currentTab='config'">系统设置</button>
+        </div>
+
+        <div class="container">
+            <!-- 活动管理 Tab -->
+            <div class="tab-content" :class="{active: currentTab==='activities'}">
+                <div class="card">
+                    <div class="toolbar">
+                        <h2>活动列表</h2>
+                        <button @click="showActivityModal" class="btn-success">+ 新增活动</button>
+                    </div>
+                    <table v-if="activities.length > 0">
+                        <thead>
+                            <tr>
+                                <th>活动名称</th>
+                                <th>开始时间</th>
+                                <th>结束时间</th>
+                                <th>状态</th>
+                                <th>关联班级</th>
+                                <th>操作</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr v-for="activity in activities" :key="activity.id">
+                                <td>{{ activity.name }}</td>
+                                <td>{{ activity.start_time }}</td>
+                                <td>{{ activity.end_time }}</td>
+                                <td>
+                                    <span :class="getStatusClass(activity.status)">{{ getStatusText(activity.status) }}</span>
+                                </td>
+                                <td>{{ getClassNames(activity.classes) }}</td>
+                                <td>
+                                    <button @click="showActivityLink(activity)" class="btn-primary">查看链接</button>
+                                    <button @click="deleteActivity(activity.id)" class="btn-danger">删除</button>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                    <p v-else class="text-center mt-20">暂无活动数据</p>
+                </div>
+            </div>
+
+            <!-- 班级管理 Tab -->
+            <div class="tab-content" :class="{active: currentTab==='classes'}">
+                <div class="card">
+                    <div class="toolbar">
+                        <h2>班级列表</h2>
+                        <button @click="showClassModal" class="btn-success">+ 新增班级</button>
+                    </div>
+                    <table v-if="classes.length > 0">
+                        <thead>
+                            <tr>
+                                <th>班级名称</th>
+                                <th>学生人数</th>
+                                <th>创建时间</th>
+                                <th>操作</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr v-for="cls in classes" :key="cls.id">
+                                <td>{{ cls.name }}</td>
+                                <td>{{ cls.student_count }}</td>
+                                <td>{{ cls.created_at }}</td>
+                                <td>
+                                    <button @click="deleteClass(cls.id)" class="btn-danger">删除</button>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                    <p v-else class="text-center mt-20">暂无班级数据</p>
+                </div>
+            </div>
+
+            <!-- 人员管理 Tab -->
+            <div class="tab-content" :class="{active: currentTab==='students'}">
+                <div class="card">
+                    <div class="toolbar">
+                        <div>
+                            <h2 style="display: inline-block; margin-right: 15px;">人员列表</h2>
+                            <select v-model="selectedClassForStudents" @change="loadStudents" style="width: 200px;">
+                                <option value="">选择班级</option>
+                                <option v-for="cls in classes" :key="cls.id" :value="cls.id">{{ cls.name }}</option>
+                            </select>
+                        </div>
+                        <div style="display: flex; gap: 10px;">
+                            <button @click="batchImportStudents" class="btn-primary" :disabled="!selectedClassForStudents">📥 批量导入</button>
+                            <button @click="showStudentModal" class="btn-success" :disabled="!selectedClassForStudents">+ 添加学生</button>
+                        </div>
+                    </div>
+                    <table v-if="students.length > 0">
+                        <thead>
+                            <tr>
+                                <th>姓名</th>
+                                <th>班级</th>
+                                <th>头像</th>
+                                <th>创建时间</th>
+                                <th>操作</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr v-for="student in students" :key="student.id">
+                                <td>{{ student.name }}</td>
+                                <td>{{ student.class_name }}</td>
+                                <td><img :src="'/' + student.image_path" style="width: 50px; height: 50px; border-radius: 5px;" onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%2250%22 height=%2250%22><rect fill=%22%23ddd%22 width=%2250%22 height=%2250%22/><text x=%2250%25%22 y=%2250%25%22 dominant-baseline=%22middle%22 text-anchor=%22middle%22 fill=%22%23999%22>头像</text></svg>'"></td>
+                                <td>{{ student.created_at }}</td>
+                                <td>
+                                    <button @click="deleteStudent(student.id)" class="btn-danger">删除</button>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                    <p v-else class="text-center mt-20">
+                        <span v-if="selectedClassForStudents">该班级暂无学生</span>
+                        <span v-else>请先选择班级</span>
+                    </p>
+                </div>
+            </div>
+
+            <!-- 时长统计 Tab -->
+            <div class="tab-content" :class="{active: currentTab==='stats'}">
+                <div class="card">
+                    <div class="toolbar">
+                        <h2>时长排名</h2>
+                        <div>
+                            <select v-model="statsPeriod" @change="loadStats" style="width: 150px; margin-right: 10px;">
+                                <option value="day">日排名</option>
+                                <option value="week">周排名</option>
+                                <option value="month">月排名</option>
+                                <option value="semester">学期排名</option>
+                            </select>
+                            <select v-model="statsClassId" @change="loadStats" style="width: 200px;">
+                                <option value="">全部班级</option>
+                                <option v-for="cls in classes" :key="cls.id" :value="cls.id">{{ cls.name }}</option>
+                            </select>
+                        </div>
+                    </div>
+                    <table v-if="stats.length > 0">
+                        <thead>
+                            <tr>
+                                <th>排名</th>
+                                <th>姓名</th>
+                                <th>班级</th>
+                                <th>累计时长（小时）</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr v-for="(stat, index) in stats" :key="stat.student_id">
+                                <td>{{ index + 1 }}</td>
+                                <td>{{ stat.student_name }}</td>
+                                <td>{{ stat.class_name }}</td>
+                                <td>{{ stat.duration.toFixed(2) }}</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                    <p v-else class="text-center mt-20">暂无统计数据</p>
+                </div>
+            </div>
+
+            <!-- 系统设置 Tab -->
+            <div class="tab-content" :class="{active: currentTab==='config'}">
+                <div class="card">
+                    <h2 class="mb-20">系统配置</h2>
+                    <form @submit.prevent="saveConfig">
+                        <div class="form-grid">
+                            <div class="form-group">
+                                <label>学期开始日期</label>
+                                <input type="date" v-model="config.semester_start_date" required>
+                            </div>
+                            <div class="form-group">
+                                <label>学期结束日期</label>
+                                <input type="date" v-model="config.semester_end_date" required>
+                            </div>
+                            <div class="form-group">
+                                <label>相似度阈值 (0-1)</label>
+                                <input type="number" step="0.01" min="0" max="1" v-model.number="config.similarity_threshold" required>
+                            </div>
+                            <div class="form-group">
+                                <label>截图间隔（秒）</label>
+                                <input type="number" min="1" max="10" v-model.number="config.capture_interval" required>
+                            </div>
+                        </div>
+                        <button type="submit" class="btn-primary">保存配置</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <!-- 新增活动模态框 -->
+        <div class="modal" :class="{active: showActivityModalFlag}">
+            <div class="modal-content">
+                <div class="modal-header">新增活动</div>
+                <form @submit.prevent="createActivity">
+                    <div class="form-group">
+                        <label>活动名称</label>
+                        <input type="text" v-model="newActivity.name" required>
+                    </div>
+                    <div class="form-group">
+                        <label>开始时间</label>
+                        <input type="datetime-local" v-model="newActivity.start_time" required>
+                    </div>
+                    <div class="form-group">
+                        <label>结束时间</label>
+                        <input type="datetime-local" v-model="newActivity.end_time" required>
+                    </div>
+                    <div class="form-group">
+                        <label>选择班级</label>
+                        <div v-for="cls in classes" :key="cls.id" style="margin-bottom: 5px;">
+                            <label style="display: inline-flex; align-items: center; cursor: pointer;">
+                                <input type="checkbox" :value="cls.id" v-model="newActivity.class_ids" style="width: auto; margin-right: 5px;">
+                                {{ cls.name }}
+                            </label>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" @click="showActivityModalFlag=false" class="btn-secondary">取消</button>
+                        <button type="submit" class="btn-primary">创建</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- 查看活动链接模态框 -->
+        <div class="modal" :class="{active: showLinkModalFlag}">
+            <div class="modal-content">
+                <div class="modal-header">活动签到信息</div>
+                <div v-if="currentActivity">
+                    <div class="form-group">
+                        <label>签到链接</label>
+                        <input type="text" :value="currentActivity.url" readonly>
+                        <button @click="copyUrl" class="btn-primary mt-10">复制链接</button>
+                    </div>
+                    <div class="qr-code" v-if="currentActivity.qrcode">
+                        <p>扫描二维码签到</p>
+                        <img :src="currentActivity.qrcode" alt="签到二维码">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button @click="showLinkModalFlag=false" class="btn-secondary">关闭</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 新增班级模态框 -->
+        <div class="modal" :class="{active: showClassModalFlag}">
+            <div class="modal-content">
+                <div class="modal-header">新增班级</div>
+                <form @submit.prevent="createClass">
+                    <div class="form-group">
+                        <label>班级名称</label>
+                        <input type="text" v-model="newClassName" placeholder="例如：教育技术" required>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" @click="showClassModalFlag=false" class="btn-secondary">取消</button>
+                        <button type="submit" class="btn-primary">创建</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- 添加学生模态框 -->
+        <div class="modal" :class="{active: showStudentModalFlag}">
+            <div class="modal-content">
+                <div class="modal-header">添加学生</div>
+                <form @submit.prevent="createStudent">
+                    <div class="form-group">
+                        <label>学生姓名</label>
+                        <input type="text" v-model="newStudent.name" placeholder="例如：张三" required>
+                    </div>
+                    <div class="form-group">
+                        <label>上传头像</label>
+                        <input type="file" @change="handleFileUpload" accept="image/*" required>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" @click="showStudentModalFlag=false" class="btn-secondary">取消</button>
+                        <button type="submit" class="btn-primary">添加</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/vue@3.3.4/dist/vue.global.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/qrcode/build/qrcode.min.js"></script>
+    <script>
+        const { createApp } = Vue;
+
+        createApp({
+            data() {
+                return {
+                    username: 'admin',
+                    currentTab: 'activities',
+                    activities: [],
+                    classes: [],
+                    students: [],
+                    stats: [],
+                    config: {
+                        semester_start_date: '',
+                        semester_end_date: '',
+                        similarity_threshold: 0.22,
+                        capture_interval: 3
+                    },
+                    selectedClassForStudents: '',
+                    statsPeriod: 'day',
+                    statsClassId: '',
+                    showActivityModalFlag: false,
+                    showLinkModalFlag: false,
+                    showClassModalFlag: false,
+                    showStudentModalFlag: false,
+                    newActivity: {
+                        name: '',
+                        start_time: '',
+                        end_time: '',
+                        class_ids: []
+                    },
+                    newClassName: '',
+                    newStudent: {
+                        name: '',
+                        image: null
+                    },
+                    currentActivity: null
+                }
+            },
+            mounted() {
+                this.loadAllData();
+            },
+            methods: {
+                async loadAllData() {
+                    await this.loadClasses();
+                    await this.loadActivities();
+                    await this.loadConfig();
+                },
+                async loadActivities() {
+                    try {
+                        const res = await axios.get('/api/activities');
+                        this.activities = res.data;
+                    } catch (error) {
+                        console.error('加载活动失败:', error);
+                    }
+                },
+                async loadClasses() {
+                    try {
+                        const res = await axios.get('/api/classes');
+                        this.classes = res.data;
+                    } catch (error) {
+                        console.error('加载班级失败:', error);
+                    }
+                },
+                async loadStudents() {
+                    if (!this.selectedClassForStudents) {
+                        this.students = [];
+                        return;
+                    }
+                    try {
+                        const res = await axios.get(`/api/students?class_id=${this.selectedClassForStudents}`);
+                        this.students = res.data;
+                    } catch (error) {
+                        console.error('加载学生失败:', error);
+                    }
+                },
+                async loadStats() {
+                    try {
+                        const params = { period: this.statsPeriod };
+                        if (this.statsClassId) {
+                            params.class_id = this.statsClassId;
+                        }
+                        const res = await axios.get('/api/stats/ranking', { params });
+                        this.stats = res.data;
+                    } catch (error) {
+                        console.error('加载统计失败:', error);
+                    }
+                },
+                async loadConfig() {
+                    try {
+                        const res = await axios.get('/api/config');
+                        this.config = res.data;
+                    } catch (error) {
+                        console.error('加载配置失败:', error);
+                    }
+                },
+                showActivityModal() {
+                    this.newActivity = { name: '', start_time: '', end_time: '', class_ids: [] };
+                    this.showActivityModalFlag = true;
+                },
+                async createActivity() {
+                    try {
+                        const res = await axios.post('/api/activities', this.newActivity);
+                        if (res.data.success) {
+                            alert('活动创建成功！');
+                            this.showActivityModalFlag = false;
+                            await this.loadActivities();
+                        }
+                    } catch (error) {
+                        alert(error.response?.data?.message || '创建失败');
+                    }
+                },
+                async deleteActivity(id) {
+                    if (!confirm('确定删除此活动吗？')) return;
+                    try {
+                        await axios.delete(`/api/activities/${id}`);
+                        alert('删除成功');
+                        await this.loadActivities();
+                    } catch (error) {
+                        alert('删除失败');
+                    }
+                },
+                async showActivityLink(activity) {
+                    try {
+                        const res = await axios.get(`/api/activities/${activity.id}/link`);
+                        const url = res.data.url;
+                        const canvas = document.createElement('canvas');
+                        await QRCode.toCanvas(canvas, url, { width: 200 });
+                        this.currentActivity = {
+                            ...activity,
+                            url: url,
+                            qrcode: canvas.toDataURL()
+                        };
+                        this.showLinkModalFlag = true;
+                    } catch (error) {
+                        alert('获取链接失败');
+                    }
+                },
+                copyUrl() {
+                    navigator.clipboard.writeText(this.currentActivity.url);
+                    alert('链接已复制！');
+                },
+                showClassModal() {
+                    this.newClassName = '';
+                    this.showClassModalFlag = true;
+                },
+                async createClass() {
+                    try {
+                        const res = await axios.post('/api/classes', { name: this.newClassName });
+                        if (res.data.success) {
+                            alert('班级创建成功！');
+                            this.showClassModalFlag = false;
+                            await this.loadClasses();
+                        }
+                    } catch (error) {
+                        alert(error.response?.data?.message || '创建失败');
+                    }
+                },
+                async deleteClass(id) {
+                    if (!confirm('确定删除此班级吗？班级下的所有学生也会被删除！')) return;
+                    try {
+                        await axios.delete(`/api/classes/${id}`);
+                        alert('删除成功');
+                        await this.loadClasses();
+                        if (this.selectedClassForStudents == id) {
+                            this.selectedClassForStudents = '';
+                            this.students = [];
+                        }
+                    } catch (error) {
+                        alert('删除失败');
+                    }
+                },
+                showStudentModal() {
+                    this.newStudent = { name: '', image: null };
+                    this.showStudentModalFlag = true;
+                },
+                handleFileUpload(event) {
+                    this.newStudent.image = event.target.files[0];
+                },
+                async createStudent() {
+                    if (!this.newStudent.image) {
+                        alert('请选择头像图片');
+                        return;
+                    }
+                    const formData = new FormData();
+                    formData.append('name', this.newStudent.name);
+                    formData.append('class_id', this.selectedClassForStudents);
+                    formData.append('image', this.newStudent.image);
+
+                    try {
+                        const res = await axios.post('/api/students', formData, {
+                            headers: { 'Content-Type': 'multipart/form-data' }
+                        });
+                        if (res.data.success) {
+                            alert('学生添加成功！');
+                            this.showStudentModalFlag = false;
+                            await this.loadStudents();
+                        }
+                    } catch (error) {
+                        alert(error.response?.data?.message || '添加失败');
+                    }
+                },
+                async deleteStudent(id) {
+                    if (!confirm('确定删除此学生吗？')) return;
+                    try {
+                        await axios.delete(`/api/students/${id}`);
+                        alert('删除成功');
+                        await this.loadStudents();
+                    } catch (error) {
+                        alert('删除失败');
+                    }
+                },
+                async batchImportStudents() {
+                    if (!this.selectedClassForStudents) {
+                        alert('请先选择班级');
+                        return;
+                    }
+
+                    const className = this.classes.find(c => c.id === this.selectedClassForStudents)?.name;
+
+                    if (!confirm(`将从 face_db/${className}/ 文件夹批量导入照片，照片文件名将作为学生姓名。\n\n确定继续吗？`)) {
+                        return;
+                    }
+
+                    try {
+                        const res = await axios.post(`/api/students/batch-import/${this.selectedClassForStudents}`);
+                        if (res.data.success) {
+                            const msg = `批量导入完成！\n\n导入成功: ${res.data.imported} 人\n跳过重复: ${res.data.skipped} 人`;
+                            if (res.data.errors.length > 0) {
+                                alert(msg + `\n\n错误:\n${res.data.errors.join('\n')}`);
+                            } else {
+                                alert(msg);
+                            }
+                            await this.loadStudents();
+                        }
+                    } catch (error) {
+                        alert(error.response?.data?.message || '批量导入失败');
+                    }
+                },
+                async saveConfig() {
+                    try {
+                        const res = await axios.post('/api/config', this.config);
+                        if (res.data.success) {
+                            alert('配置保存成功！');
+                        }
+                    } catch (error) {
+                        alert('保存失败');
+                    }
+                },
+                async logout() {
+                    try {
+                        await axios.post('/api/teacher/logout');
+                        window.location.href = '/teacher/login';
+                    } catch (error) {
+                        window.location.href = '/teacher/login';
+                    }
+                },
+                getStatusClass(status) {
+                    const map = {
+                        'pending': 'blue',
+                        'ongoing': 'green',
+                        'ended': 'red'
+                    };
+                    return map[status] || '';
+                },
+                getStatusText(status) {
+                    const map = {
+                        'pending': '未开始',
+                        'ongoing': '进行中',
+                        'ended': '已结束'
+                    };
+                    return map[status] || status;
+                },
+                getClassNames(classIds) {
+                    try {
+                        const ids = JSON.parse(classIds);
+                        return ids.map(id => {
+                            const cls = this.classes.find(c => c.id === id);
+                            return cls ? cls.name : '';
+                        }).filter(n => n).join('、');
+                    } catch {
+                        return '';
+                    }
+                }
+            }
+        }).mount('#app');
+    </script>
+</body>
+</html>
+
