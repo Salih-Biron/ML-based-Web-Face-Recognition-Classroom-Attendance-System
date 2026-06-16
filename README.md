@@ -65,6 +65,13 @@ cd ML-based-Web-Face-Recognition-Classroom-Attendance-System
 ```
 
 2. **安装依赖**
+
+Windows环境：
+```bash
+python -m pip install -r requirements.txt
+```
+
+Linux/Mac环境：
 ```bash
 pip install -r requirements.txt
 ```
@@ -223,9 +230,23 @@ python人脸识别考勤系统/
 - **每月 1 日 0:00**：清零本月时长
 - **学期开始**：清零学期时长
 
-## 常见问题
+### 常见问题
 
-### 1. 摄像头无法调用？
+### Q1: pip命令无法识别？
+
+**Windows环境解决方案**：
+```bash
+# 方法1：使用python -m pip
+python -m pip install -r requirements.txt
+
+# 方法2：添加pip到PATH（需要管理员权限）
+# 找到Python安装目录下的Scripts文件夹，添加到系统环境变量
+
+# 方法3：使用Python完整路径
+C:\Users\你的用户名\AppData\Local\Programs\Python\Python310\python.exe -m pip install -r requirements.txt
+```
+
+### Q2: 摄像头无法调用？
 
 **原因**：部分浏览器要求 HTTPS 才能调用摄像头
 
@@ -233,7 +254,7 @@ python人脸识别考勤系统/
 - 使用 `localhost` 访问（开发环境）
 - 或配置 HTTPS 证书（生产环境）
 
-### 2. 识别速度慢？
+### Q3: 识别速度慢？
 
 **原因**：CPU 环境下，大规模人脸库识别需要时间
 
@@ -242,7 +263,7 @@ python人脸识别考勤系统/
 - 首次加载较慢，后续识别速度会提升
 - 建议人脸库控制在 50-200 人规模
 
-### 3. 识别率低？
+### Q4: 识别率低？
 
 **原因**：光线、角度、距离影响识别效果
 
@@ -252,7 +273,7 @@ python人脸识别考勤系统/
 - 保持适当距离（0.5-1米）
 - 调整相似度阈值（系统设置中）
 
-### 4. 多人同时签到识别不全？
+### Q5: 多人同时签到识别不全？
 
 **原因**：人脸遮挡或距离过远
 
