@@ -86,6 +86,9 @@ def update_activity_status():
 
 def init_scheduler():
     """初始化定时任务"""
+    # 立即执行一次活动状态更新
+    update_activity_status()
+
     # 每日0:00重置
     scheduler.add_job(reset_daily, 'cron', hour=0, minute=0, id='reset_daily')
 
