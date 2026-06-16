@@ -697,10 +697,28 @@ if __name__ == '__main__':
 
     # 获取本机IP
     local_ip = get_local_ip()
+
+    # 检查是否存在SSL证书
+    cert_dir = os.path.join(os.path.dirname(__file__), 'certs')
+    cert_file = os.path.join(cert_dir, 'cert.pem')
+    key_file = os.path.join(cert_dir, 'key.pem')
+
+    use_https = os.path.exists(cert_file) and os.path.exists(key_file)
+
+    protocol = 'https' if use_https else 'http'
     print(f"\n{'='*50}")
-    print(f"教师端访问: http://{local_ip}:5000/teacher/login")
-    print(f"学生端访问: http://{local_ip}:5000/student/<activity_id>")
+    print(f"教师端访问: {protocol}://{local_ip}:5000/teacher/login")
+    print(f"学生端访问: {protocol}://{local_ip}:5000/student/<activity_id>")
+    if not use_https:
+        print(f"\n⚠️  当前使用HTTP，摄像头可能无法在非localhost环境使用")
+        print(f"💡 生成HTTPS证书: python generate_cert.py")
+    else:
+        print(f"\n✅ HTTPS已启用，摄像头可正常使用")
+        print(f"⚠️  首次访问时浏览器会提示不安全，点击'高级'->'继续访问'")
     print(f"{'='*50}\n")
 
     # 启动Flask应用
-    app.run(host='0.0.0.0', port=5000, debug=True)
+    if use_https:
+        app.run(host='0.0.0.0', port=5000, debug=True, ssl_context=(cert_file, key_file))
+    else:
+        app.run(host='0.0.0.0', port=5000, debug=True)

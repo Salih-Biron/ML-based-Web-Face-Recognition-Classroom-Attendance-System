@@ -6,3 +6,4 @@ opencv-python==4.8.0.74
 tensorflow==2.16.2
 tf-keras==2.16.0
 werkzeug==2.3.6
+pyOpenSSL==24.0.0
