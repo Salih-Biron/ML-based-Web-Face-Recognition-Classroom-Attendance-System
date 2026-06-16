@@ -59,27 +59,41 @@ def update_activity_status():
     cursor = conn.cursor()
 
     now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    print(f"[更新活动状态] 当前时间: {now}")
 
+    # 获取所有活动用于调试
+    cursor.execute('SELECT id, name, start_time, end_time, status FROM activities')
+    activities = cursor.fetchall()
+
+    for activity in activities:
+        print(f"  活动: {activity['name']}, 开始: {activity['start_time']}, 结束: {activity['end_time']}, 当前状态: {activity['status']}")
+
+    # 使用datetime函数进行时间比较，兼容多种格式
     # 更新为pending
     cursor.execute('''
         UPDATE activities
         SET status='pending'
-        WHERE start_time > ?
+        WHERE datetime(start_time) > datetime(?)
     ''', (now,))
+    pending_count = cursor.rowcount
 
     # 更新为ongoing
     cursor.execute('''
         UPDATE activities
         SET status='ongoing'
-        WHERE start_time <= ? AND end_time >= ?
+        WHERE datetime(start_time) <= datetime(?) AND datetime(end_time) >= datetime(?)
     ''', (now, now))
+    ongoing_count = cursor.rowcount
 
     # 更新为ended
     cursor.execute('''
         UPDATE activities
         SET status='ended'
-        WHERE end_time < ?
+        WHERE datetime(end_time) < datetime(?)
     ''', (now,))
+    ended_count = cursor.rowcount
+
+    print(f"  更新结果: pending={pending_count}, ongoing={ongoing_count}, ended={ended_count}")
 
     conn.commit()
     conn.close()

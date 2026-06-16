@@ -345,6 +345,11 @@ def batch_import_students(class_id):
 @app.route('/api/activities', methods=['GET'])
 def get_activities():
     """获取所有活动"""
+    from modules.scheduler import update_activity_status
+
+    # 先更新状态
+    update_activity_status()
+
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute('SELECT * FROM activities ORDER BY created_at DESC')
@@ -405,7 +410,11 @@ def delete_activity(activity_id):
 def get_activity_link(activity_id):
     """获取活动签到链接"""
     local_ip = get_local_ip()
-    url = f"http://{local_ip}:5000/student/{activity_id}"
+
+    # 根据当前请求协议生成链接
+    protocol = 'https' if request.is_secure else 'http'
+    url = f"{protocol}://{local_ip}:5000/student/{activity_id}"
+
     return jsonify({'url': url})
 
 # ==================== 统计API ====================
